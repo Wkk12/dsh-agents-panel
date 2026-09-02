@@ -2,7 +2,7 @@
 // - /agents/*   : 读取/编辑 ~/.agents 文件(技能/规则/MCP)
 // - /rules/*    : 规则库分类 + 按工作区根目录勾选 + 生成 CLAUDE.local.md
 // 用 node fs + os.homedir() 直接读写主目录与工作区(宿主进程以用户权限运行)。
-import { promises as fs } from 'node:fs'
+import { promises as fs, readFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join, dirname, basename } from 'node:path'
@@ -10,6 +10,16 @@ import { join, dirname, basename } from 'node:path'
 const AGENTS = join(homedir(), '.agents')
 const RULES_DIR = join(AGENTS, 'rules')
 const WORKSPACES_FILE = join(AGENTS, 'workspaces.json')
+
+// 同步读 DSH 已登记工作区根目录(仅用于在插件加载时一次性标记 seen,避免误动旧工作区)
+function syncDshWorkspacePaths(): string[] {
+  try {
+    const home = process.env.DSH_HOME || join(homedir(), '.dsh')
+    const j = JSON.parse(readFileSync(join(home, 'storages', 'workspace.json'), 'utf-8'))
+    const t = (j.tables && j.tables.workspaces) || {}
+    return Object.values(t).map((w: any) => w.path).filter(Boolean)
+  } catch { return [] }
+}
 
 // 新项目默认规则模板(通用核心;新工作区未勾选时预勾这组)
 const DEFAULT_RULE_IDS = ['gen-engineering', 'gen-discipline', 'gen-restful', 'gen-java', 'gen-vue']
@@ -231,8 +241,8 @@ export function apply(ctx: any) {
           try { await bootstrapWorkspace(p) } catch { /* 目录不存在/无权限,跳过 */ }
         }
       }
-      // 初始:标记当前所有登记工作区,避免误动旧工作区;仅对之后新增的做引导
-      void readDshWorkspaces().then((dsh) => { for (const w of dsh) seen.add(w.path) }).catch(() => {})
+      // 初始:同步标记当前所有登记工作区,避免误动旧工作区;仅对之后新增的做引导
+      for (const p of syncDshWorkspacePaths()) seen.add(p)
       // DSH 工作区域有变化(新建/打开新工作区)时,补引导缺失的规则文件
       const off = typeof ctx.on === 'function'
         ? ctx.on('domain/changed', (change: any) => { if (change && change.domain === 'workspace') void scan() })
