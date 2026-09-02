@@ -17,7 +17,7 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('sidebar.footer.action', () =>
     ctx.slots.register(
       { name: 'sidebar.footer.action', id: 'dsh-agents-panel', order: 100 },
-      () => React.createElement(PublicRepoButton),
+      (props) => React.createElement(PublicRepoButton, props),
     ),
   )
 }

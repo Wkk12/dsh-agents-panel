@@ -71,8 +71,13 @@ export function apply(ctx: any) {
             const ents = await fs.readdir(target, { withFileTypes: true })
             const dirs: any[] = [], files: any[] = []
             for (const e of ents) {
-              const item = { name: e.name, type: e.isDirectory() ? 'directory' : 'file', path: join(target, e.name) }
-              ;(e.isDirectory() ? dirs : files).push(item)
+              // 软链(isSymbolicLink)的 isDirectory() 恒为 false,需 stat 其真实类型
+              let isDir = e.isDirectory()
+              if (e.isSymbolicLink()) {
+                try { isDir = (await fs.stat(join(target, e.name))).isDirectory() } catch { /* 忽略,按文件 */ }
+              }
+              const item = { name: e.name, type: isDir ? 'directory' : 'file', path: join(target, e.name) }
+              ;(isDir ? dirs : files).push(item)
             }
             dirs.sort((a, b) => a.name.localeCompare(b.name)); files.sort((a, b) => a.name.localeCompare(b.name))
             return send(res, { ok: true, dir: target, dirs, files })

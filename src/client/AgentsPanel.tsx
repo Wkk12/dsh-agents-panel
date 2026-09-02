@@ -122,11 +122,11 @@ export function AgentsPanel() {
   return createPortal(modal, document.body)
 }
 
-export function PublicRepoButton() {
+export function PublicRepoButton({ wide = true }: { wide?: boolean }) {
   return (
-    <button onClick={toggle} style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', background: 'transparent', color: 'inherit', border: 'none', padding: '9px 14px', cursor: 'pointer', fontSize: 13, borderRadius: 8 }}>
+    <button onClick={toggle} title="公共仓库" style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', background: 'transparent', color: 'inherit', border: 'none', padding: '9px 14px', cursor: 'pointer', fontSize: 13, borderRadius: 8, justifyContent: wide ? 'flex-start' : 'center' }}>
       <Icon d={IC.folder} size={15} />
-      <span>公共仓库</span>
+      {wide && <span>公共仓库</span>}
     </button>
   )
 }
