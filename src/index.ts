@@ -25,7 +25,7 @@ function targetDir(dir: string | null): string {
 }
 
 // 读取规则库:遍历 ~/.agents/rules/**/*.md,解析 frontmatter(id/name/category/description)
-type Rule = { id: string; name: string; category: string; description: string; file: string }
+type Rule = { id: string; name: string; category: string; applies: string; description: string; file: string }
 async function readRulesLibrary(): Promise<Rule[]> {
   const out: Rule[] = []
   async function walk(d: string) {
@@ -42,7 +42,7 @@ async function readRulesLibrary(): Promise<Rule[]> {
           if (m) {
             for (const line of m[1].split('\n')) { const kv = line.match(/^([a-zA-Z-]+):\s*(.*)$/); if (kv) fm[kv[1]] = kv[2].trim() }
           }
-          if (fm.id) out.push({ id: fm.id, name: fm.name || fm.id, category: fm.category || '未分类', description: fm.description || '', file: m ? m[2].trim() : txt.trim() })
+          if (fm.id) out.push({ id: fm.id, name: fm.name || fm.id, category: fm.category || '未分类', applies: fm.applies || '', description: fm.description || '', file: m ? m[2].trim() : txt.trim() })
         } catch { /* skip */ }
       }
     }

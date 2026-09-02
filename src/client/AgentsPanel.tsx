@@ -262,7 +262,7 @@ function RepoTree({ theme }: { theme: Theme }) {
 }
 
 // ============ 规则：分类 + 按工作区根目录勾选 ============
-type Rule = { id: string; name: string; category: string; description: string; file: string }
+type Rule = { id: string; name: string; category: string; applies: string; description: string; file: string }
 
 function RulesPanel({ theme }: { theme: Theme }) {
   const [rules, setRules] = useState<Rule[]>([])
@@ -333,6 +333,7 @@ function RulesPanel({ theme }: { theme: Theme }) {
                   <input type="checkbox" checked={checked.has(r.id)} readOnly style={{ marginTop: 2, accentColor: theme.accent }} />
                   <span style={{ flex: 1 }}>
                     <span style={{ fontSize: 12.5, color: theme.fg, fontWeight: 500 }}>{r.name}</span>
+                    {r.applies && <span style={{ display: 'inline-block', marginLeft: 8, fontSize: 10.5, color: theme.accent, opacity: .85, border: `1px solid ${theme.border}`, borderRadius: 5, padding: '1px 6px', verticalAlign: 'middle' }}>适用:{r.applies}</span>}
                     <span style={{ display: 'block', fontSize: 11.5, color: theme.fg, opacity: .6, marginTop: 2 }}>{r.description}</span>
                   </span>
                 </label>
