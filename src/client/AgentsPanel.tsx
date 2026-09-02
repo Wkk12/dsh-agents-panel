@@ -73,9 +73,12 @@ const IC = {
   eyes: 'M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
 }
 
+const tabBtn = (t: Theme): React.CSSProperties => ({ background: 'transparent', color: t.fg, border: 'none', padding: '5px 12px', borderRadius: 7, fontSize: 12.5, cursor: 'pointer', transition: 'background .15s' })
+
 export function AgentsPanel() {
   const [visible, setVisible] = useState(isOpen())
   useEffect(() => on(() => setVisible(isOpen())), [])
+  const [tab, setTab] = useState<'files' | 'rules'>('files')
   const theme = useTheme()
   if (!visible) return null
   const modal = (
@@ -97,16 +100,22 @@ export function AgentsPanel() {
         .ap-md hr{border:none;border-top:1px solid ${theme.border};margin:12px 0}
       `}</style>
       <div style={{ width: 1020, maxWidth: '95vw', height: '86vh', maxHeight: '93vh', background: theme.surface, color: theme.fg, border: `1px solid ${theme.border}`, borderRadius: 12, boxShadow: '0 24px 80px rgba(0,0,0,.5)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 18px', borderBottom: `1px solid ${theme.border}`, flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Icon d={IC.folder} size={16} />
-            <b style={{ fontSize: 14, letterSpacing: '.3px' }}>公共仓库 · ~/.agents</b>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px 8px', borderBottom: `1px solid ${theme.border}`, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Icon d={IC.folder} size={16} />
+              <b style={{ fontSize: 14, letterSpacing: '.3px' }}>公共仓库</b>
+            </div>
+            <div style={{ display: 'flex', gap: 4, padding: '3px', background: 'rgba(128,128,128,.12)', borderRadius: 9 }}>
+              <button onClick={() => setTab('files')} style={{ ...tabBtn(theme), background: tab === 'files' ? 'rgba(128,128,128,.2)' : 'transparent' }}>文件</button>
+              <button onClick={() => setTab('rules')} style={{ ...tabBtn(theme), background: tab === 'rules' ? 'rgba(128,128,128,.2)' : 'transparent' }}>规则</button>
+            </div>
           </div>
           <button onClick={toggle} aria-label="关闭" style={{ background: 'transparent', border: 'none', color: theme.fg, opacity: .7, width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'background .15s' }} onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(128,128,128,.18)')} onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
             <Icon d={IC.x} size={18} />
           </button>
         </div>
-        <RepoTree theme={theme} />
+        {tab === 'files' ? <RepoTree theme={theme} /> : <RulesPanel theme={theme} />}
       </div>
     </div>
   )
@@ -244,6 +253,90 @@ function RepoTree({ theme }: { theme: Theme }) {
             </div>
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ============ 规则：分类 + 按工作区根目录勾选 ============
+type Rule = { id: string; name: string; category: string; description: string; file: string }
+
+function RulesPanel({ theme }: { theme: Theme }) {
+  const [rules, setRules] = useState<Rule[]>([])
+  const [sels, setSels] = useState<Record<string, string[]>>({})
+  const [ws, setWs] = useState('')
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const r = await fetch('/rules/library')
+        const j = await r.json()
+        setRules(j.rules || []); setSels(j.selections || {})
+      } catch (e: any) { setMsg(String((e && e.message) || e)) }
+    })()
+  }, [])
+
+  const wsKeys = Object.keys(sels)
+  const chooseWs = (w: string) => { setWs(w); setChecked(new Set(sels[w] || [])); setMsg('') }
+  const toggle = (id: string) => { setChecked((c) => { const n = new Set(c); n.has(id) ? n.delete(id) : n.add(id); return n }) }
+  const save = async () => {
+    if (!ws) { setMsg('请填写工作区根目录'); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/rules/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws, rules: Array.from(checked) }) })
+      const j = await r.json()
+      setMsg(j.ok ? `已保存${ws}/CLAUDE.local.md${j.wroteLocal ? '' : '(未能写入本地,请检查权限)'}` : (j.error || '保存失败'))
+      setSels((s) => ({ ...s, [ws]: Array.from(checked) }))
+    } catch (e: any) { setMsg(String((e && e.message) || e)) }
+    setBusy(false)
+  }
+
+  const cats = Array.from(new Set(rules.map((r) => r.category)))
+
+  return (
+    <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+      {/* 左:工作区列表 */}
+      <div style={{ width: 280, flexShrink: 0, borderRight: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div style={{ padding: '10px 12px', fontSize: 12, color: theme.fg, opacity: .65 }}>工作区(根目录)</div>
+        <div style={{ flex: 1, overflow: 'auto', padding: '0 8px 10px' }}>
+          {wsKeys.length === 0 && <div style={{ color: theme.fg, opacity: .4, fontSize: 12.5, padding: 10 }}>还没有配置过工作区</div>}
+          {wsKeys.map((w) => (
+            <div key={w} onClick={() => chooseWs(w)} style={{ display: 'flex', gap: 7, alignItems: 'center', padding: '6px 8px', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: ws === w ? 'rgba(128,128,128,.16)' : 'transparent', color: theme.fg, wordBreak: 'break-all' }} onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(128,128,128,.14)')} onMouseLeave={(e) => (e.currentTarget.style.background = ws === w ? 'rgba(128,128,128,.16)' : 'transparent')}>
+              {w}
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: '8px 10px', borderTop: `1px solid ${theme.border}` }}>
+          <input value={ws} onChange={(e) => chooseWs(e.target.value)} placeholder="输入工作区根目录，如 /Users/xxx/proj" style={{ width: '100%', background: 'transparent', color: theme.fg, border: `1px solid ${theme.border}`, borderRadius: 7, padding: '7px 9px', fontSize: 12, outline: 'none' }} />
+        </div>
+      </div>
+
+      {/* 右:规则分类勾选 */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: `1px solid ${theme.border}`, flexShrink: 0, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: theme.fg, opacity: .7 }}>勾选本工作区要使用的规则({checked.size}/{rules.length})</span>
+          <button onClick={save} disabled={busy} style={{ background: theme.accent, color: '#fff', border: 'none', borderRadius: 7, padding: '5px 14px', fontSize: 12, cursor: 'pointer', marginLeft: 'auto', opacity: busy ? .6 : 1 }}>{busy ? '保存中…' : '保存并生成本地规则'}</button>
+        </div>
+        {msg && <div style={{ padding: '6px 14px', fontSize: 12, color: theme.dest }}>{msg}</div>}
+        <div style={{ flex: 1, overflow: 'auto', padding: '10px 14px' }}>
+          {cats.map((cat) => (
+            <div key={cat} style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: theme.fg, marginBottom: 6 }}>{cat}</div>
+              {rules.filter((r) => r.category === cat).map((r) => (
+                <label key={r.id} onClick={() => toggle(r.id)} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '7px 8px', borderRadius: 8, cursor: 'pointer', background: checked.has(r.id) ? 'rgba(128,128,128,.12)' : 'transparent', transition: 'background .15s' }}>
+                  <input type="checkbox" checked={checked.has(r.id)} readOnly style={{ marginTop: 2, accentColor: theme.accent }} />
+                  <span style={{ flex: 1 }}>
+                    <span style={{ fontSize: 12.5, color: theme.fg, fontWeight: 500 }}>{r.name}</span>
+                    <span style={{ display: 'block', fontSize: 11.5, color: theme.fg, opacity: .6, marginTop: 2 }}>{r.description}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
