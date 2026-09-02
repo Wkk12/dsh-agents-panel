@@ -157,13 +157,22 @@ export function apply(ctx: any) {
             const sels = await readSelections()
             sels[ws] = Array.isArray(rules) ? rules : []
             await fs.writeFile(WORKSPACES_FILE, JSON.stringify({ workspaces: sels }, null, 2), 'utf-8')
-            // 生成工作区根目录的 AGENTS.md(跨工具标准:DSH/Claude/Codex/Cursor 都读)
+            // 生成工作区根目录的 AGENTS.md(跨工具标准:DSH/Codex/Cursor 都读)
             const library = await readRulesLibrary()
             const chosen = library.filter((r) => (sels[ws] || []).includes(r.id))
             const agPath = join(ws, 'AGENTS.md')
             const content = `# 项目规则(由公共仓库「规则」页生成,含通用+勾选规则)\n\n> 工作区根目录: ${ws}\n> 如需调整,在 DSH「公共仓库 → 规则」勾选后保存。\n\n---\n\n` + chosen.map((r) => `## ${r.name}\n\n${r.file}`).join('\n\n---\n\n') + '\n'
             let wroteLocal = true
             try { await fs.writeFile(agPath, content, 'utf-8') } catch { wroteLocal = false }
+            // 让 Claude Code 也读项目规则:无 CLAUDE.md 则软链;已有则顶部加 @AGENTS.md(不覆盖)
+            const cl = join(ws, 'CLAUDE.md')
+            try {
+              const st = await fs.lstat(cl)
+              if (!st.isSymbolicLink()) {
+                const existing = await fs.readFile(cl, 'utf-8')
+                if (!existing.trimStart().startsWith('@AGENTS.md')) await fs.writeFile(cl, '@AGENTS.md\n\n' + existing, 'utf-8')
+              }
+            } catch { try { await fs.symlink('AGENTS.md', cl) } catch { /* ignore */ } }
             return send(res, { ok: true, wroteLocal, localPath: agPath })
           }
           return send(res, { ok: false, error: 'not found' }, 404)
