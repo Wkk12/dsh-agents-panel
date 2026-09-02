@@ -269,6 +269,7 @@ type Rule = { id: string; name: string; category: string; applies: string; descr
 function RulesPanel({ theme }: { theme: Theme }) {
   const [rules, setRules] = useState<Rule[]>([])
   const [sels, setSels] = useState<Record<string, string[]>>({})
+  const [defaultRules, setDefaultRules] = useState<string[]>([])
   const [wsList, setWsList] = useState<{ path: string; title: string }[]>([])
   const [ws, setWs] = useState('')
   const [checked, setChecked] = useState<Set<string>>(new Set())
@@ -279,13 +280,13 @@ function RulesPanel({ theme }: { theme: Theme }) {
     ;(async () => {
       try {
         const [lr, lw] = await Promise.all([fetch('/rules/library').then((r) => r.json()), fetch('/rules/workspaces').then((r) => r.json())])
-        setRules(lr.rules || []); setSels(lr.selections || {})
+        setRules(lr.rules || []); setSels(lr.selections || {}); setDefaultRules(lr.defaultRules || [])
         setWsList((lw as any).workspaces || [])
       } catch (e: any) { setMsg({ text: String((e && e.message) || e), ok: false }) }
     })()
   }, [])
 
-  const chooseWs = (w: string) => { setWs(w); setChecked(new Set(sels[w] || [])); setMsg(null) }
+  const chooseWs = (w: string) => { setWs(w); const saved = sels[w]; setChecked(new Set(saved && saved.length ? saved : defaultRules)); setMsg(null) }
   const toggle = (id: string) => { setChecked((c) => { const n = new Set(c); n.has(id) ? n.delete(id) : n.add(id); return n }) }
   const save = async () => {
     if (!ws) { setMsg({ text: '请选择工作区', ok: false }); return }

@@ -11,6 +11,9 @@ const AGENTS = join(homedir(), '.agents')
 const RULES_DIR = join(AGENTS, 'rules')
 const WORKSPACES_FILE = join(AGENTS, 'workspaces.json')
 
+// 新项目默认规则模板(通用核心;新工作区未勾选时预勾这组)
+const DEFAULT_RULE_IDS = ['gen-engineering', 'gen-discipline', 'gen-restful', 'gen-java', 'gen-vue']
+
 export const inject = ['webServer']
 
 function send(res: any, body: unknown, status = 200) {
@@ -130,7 +133,7 @@ export function apply(ctx: any) {
           if (name === '/library') {
             const rules = await readRulesLibrary()
             const selections = await readSelections()
-            return send(res, { ok: true, rules, selections })
+            return send(res, { ok: true, rules, selections, defaultRules: DEFAULT_RULE_IDS })
           }
           if (name === '/workspaces') {
             const dsh = await readDshWorkspaces()
@@ -154,14 +157,14 @@ export function apply(ctx: any) {
             const sels = await readSelections()
             sels[ws] = Array.isArray(rules) ? rules : []
             await fs.writeFile(WORKSPACES_FILE, JSON.stringify({ workspaces: sels }, null, 2), 'utf-8')
-            // 生成该工作区根目录的 CLAUDE.local.md(gitignore,内容为勾选规则)
+            // 生成工作区根目录的 AGENTS.md(跨工具标准:DSH/Claude/Codex/Cursor 都读)
             const library = await readRulesLibrary()
             const chosen = library.filter((r) => (sels[ws] || []).includes(r.id))
-            const localPath = join(ws, 'CLAUDE.local.md')
-            const content = `# 规则选择(由公共仓库「规则」页自动生成,请勿手改;gitignore)\n\n> 工作区根目录: ${ws}\n\n---\n\n` + chosen.map((r) => `## ${r.name}\n\n${r.file}`).join('\n\n---\n\n') + '\n'
+            const agPath = join(ws, 'AGENTS.md')
+            const content = `# 项目规则(由公共仓库「规则」页生成,含通用+勾选规则)\n\n> 工作区根目录: ${ws}\n> 如需调整,在 DSH「公共仓库 → 规则」勾选后保存。\n\n---\n\n` + chosen.map((r) => `## ${r.name}\n\n${r.file}`).join('\n\n---\n\n') + '\n'
             let wroteLocal = true
-            try { await fs.writeFile(localPath, content, 'utf-8') } catch { wroteLocal = false }
-            return send(res, { ok: true, wroteLocal, localPath })
+            try { await fs.writeFile(agPath, content, 'utf-8') } catch { wroteLocal = false }
+            return send(res, { ok: true, wroteLocal, localPath: agPath })
           }
           return send(res, { ok: false, error: 'not found' }, 404)
         } catch (e: any) {
