@@ -281,6 +281,7 @@ function RulesPanel({ theme }: { theme: Theme }) {
 
   const wsKeys = Object.keys(sels)
   const chooseWs = (w: string) => { setWs(w); setChecked(new Set(sels[w] || [])); setMsg('') }
+  const addWs = () => { const path = window.prompt('工作区根目录路径，如 /Users/你的用户名/项目'); if (path) chooseWs(path) }
   const toggle = (id: string) => { setChecked((c) => { const n = new Set(c); n.has(id) ? n.delete(id) : n.add(id); return n }) }
   const save = async () => {
     if (!ws) { setMsg('请填写工作区根目录'); return }
@@ -300,7 +301,10 @@ function RulesPanel({ theme }: { theme: Theme }) {
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       {/* 左:工作区列表 */}
       <div style={{ width: 280, flexShrink: 0, borderRight: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-        <div style={{ padding: '10px 12px', fontSize: 12, color: theme.fg, opacity: .65 }}>工作区(根目录)</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 12px', borderBottom: `1px solid ${theme.border}`, flexShrink: 0 }}>
+          <span style={{ fontSize: 12, color: theme.fg, opacity: .65 }}>工作区</span>
+          <button onClick={addWs} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'transparent', color: theme.fg, border: `1px solid ${theme.border}`, borderRadius: 7, padding: '3px 9px', fontSize: 12, cursor: 'pointer', opacity: .8 }} onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(128,128,128,.14)')} onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}><Icon d={IC.plus} size={12} /> 新增</button>
+        </div>
         <div style={{ flex: 1, overflow: 'auto', padding: '0 8px 10px' }}>
           {wsKeys.length === 0 && <div style={{ color: theme.fg, opacity: .4, fontSize: 12.5, padding: 10 }}>还没有配置过工作区</div>}
           {wsKeys.map((w) => (
@@ -308,9 +312,6 @@ function RulesPanel({ theme }: { theme: Theme }) {
               {w}
             </div>
           ))}
-        </div>
-        <div style={{ padding: '8px 10px', borderTop: `1px solid ${theme.border}` }}>
-          <input value={ws} onChange={(e) => chooseWs(e.target.value)} placeholder="输入工作区根目录，如 /Users/xxx/proj" style={{ width: '100%', background: 'transparent', color: theme.fg, border: `1px solid ${theme.border}`, borderRadius: 7, padding: '7px 9px', fontSize: 12, outline: 'none' }} />
         </div>
       </div>
 
