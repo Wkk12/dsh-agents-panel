@@ -4,7 +4,7 @@
 // 用 node fs + os.homedir() 直接读写主目录与工作区(宿主进程以用户权限运行)。
 import { promises as fs } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, dirname } from 'node:path'
+import { join, dirname, basename } from 'node:path'
 
 const AGENTS = join(homedir(), '.agents')
 const RULES_DIR = join(AGENTS, 'rules')
@@ -54,6 +54,13 @@ async function readRulesLibrary(): Promise<Rule[]> {
 async function readSelections(): Promise<Record<string, string[]>> {
   const j = await readJson(WORKSPACES_FILE, { workspaces: {} })
   return j.workspaces || {}
+}
+// 读 DSH 真实工作区列表($DSH_HOME/storages/workspace.json 的 tables.workspaces)
+async function readDshWorkspaces(): Promise<{ path: string; title: string }[]> {
+  const home = process.env.DSH_HOME || join(homedir(), '.dsh')
+  const j = await readJson(join(home, 'storages', 'workspace.json'), { tables: { workspaces: {} } })
+  const t = (j.tables && j.tables.workspaces) || {}
+  return Object.values(t).map((w: any) => ({ path: w.path, title: w.title || basename(w.path) }))
 }
 
 export function apply(ctx: any) {
@@ -117,6 +124,16 @@ export function apply(ctx: any) {
             const rules = await readRulesLibrary()
             const selections = await readSelections()
             return send(res, { ok: true, rules, selections })
+          }
+          if (name === '/workspaces') {
+            const dsh = await readDshWorkspaces()
+            const sels = await readSelections()
+            // 合并 DSH 已存工作区 + 已配置工作区,按 path 去重
+            const seen = new Set<string>()
+            const all: { path: string; title: string }[] = []
+            for (const w of dsh) { seen.add(w.path); all.push(w) }
+            for (const p of Object.keys(sels)) { if (!seen.has(p)) { seen.add(p); all.push({ path: p, title: basename(p) }) } }
+            return send(res, { ok: true, workspaces: all })
           }
           if (name === '/selections') {
             return send(res, { ok: true, selections: await readSelections() })

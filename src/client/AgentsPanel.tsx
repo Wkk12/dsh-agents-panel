@@ -267,6 +267,7 @@ type Rule = { id: string; name: string; category: string; description: string; f
 function RulesPanel({ theme }: { theme: Theme }) {
   const [rules, setRules] = useState<Rule[]>([])
   const [sels, setSels] = useState<Record<string, string[]>>({})
+  const [wsList, setWsList] = useState<{ path: string; title: string }[]>([])
   const [ws, setWs] = useState('')
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [msg, setMsg] = useState('')
@@ -275,14 +276,13 @@ function RulesPanel({ theme }: { theme: Theme }) {
   useEffect(() => {
     ;(async () => {
       try {
-        const r = await fetch('/rules/library')
-        const j = await r.json()
-        setRules(j.rules || []); setSels(j.selections || {})
+        const [lr, lw] = await Promise.all([fetch('/rules/library').then((r) => r.json()), fetch('/rules/workspaces').then((r) => r.json())])
+        setRules(lr.rules || []); setSels(lr.selections || {})
+        setWsList((lw as any).workspaces || [])
       } catch (e: any) { setMsg(String((e && e.message) || e)) }
     })()
   }, [])
 
-  const wsKeys = Object.keys(sels)
   const chooseWs = (w: string) => { setWs(w); setChecked(new Set(sels[w] || [])); setMsg('') }
   const toggle = (id: string) => { setChecked((c) => { const n = new Set(c); n.has(id) ? n.delete(id) : n.add(id); return n }) }
   const save = async () => {
@@ -307,10 +307,11 @@ function RulesPanel({ theme }: { theme: Theme }) {
           <span style={{ fontSize: 12, color: theme.fg, opacity: .65 }}>工作区</span>
         </div>
         <div style={{ flex: 1, overflow: 'auto', padding: '0 8px 10px' }}>
-          {wsKeys.length === 0 && <div style={{ color: theme.fg, opacity: .4, fontSize: 12.5, padding: 10 }}>还没有配置过工作区</div>}
-          {wsKeys.map((w) => (
-            <div key={w} onClick={() => chooseWs(w)} style={{ display: 'flex', gap: 7, alignItems: 'center', padding: '6px 8px', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: ws === w ? 'rgba(128,128,128,.16)' : 'transparent', color: theme.fg, wordBreak: 'break-all' }} onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(128,128,128,.14)')} onMouseLeave={(e) => (e.currentTarget.style.background = ws === w ? 'rgba(128,128,128,.16)' : 'transparent')}>
-              {w}
+          {wsList.length === 0 && <div style={{ color: theme.fg, opacity: .4, fontSize: 12.5, padding: 10 }}>暂无工作区</div>}
+          {wsList.map((w) => (
+            <div key={w.path} onClick={() => chooseWs(w.path)} title={w.path} style={{ display: 'flex', gap: 7, alignItems: 'center', padding: '6px 8px', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: ws === w.path ? 'rgba(128,128,128,.16)' : 'transparent', color: theme.fg, wordBreak: 'break-all' }} onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(128,128,128,.14)')} onMouseLeave={(e) => (e.currentTarget.style.background = ws === w.path ? 'rgba(128,128,128,.16)' : 'transparent')}>
+              {w.title}
+              <span style={{ opacity: .5, fontSize: 10.5 }}>{w.path}</span>
             </div>
           ))}
         </div>
