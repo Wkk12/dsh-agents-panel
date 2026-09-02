@@ -2,20 +2,25 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { isOpen, on, toggle } from './store'
 
-// 设计系统(ui-ux-pro-max):深色开发者工具配色,跟随 DSH 主题读取 + 兜底
-const P = { bg: '#0F172A', fg: '#F8FAFC', border: '#475569', accent: '#22C55E', dest: '#EF4444' }
+// 主题:跟随 DSH 亮/暗;优先读实际颜色,读不到用亮/暗兜底
+const LIGHT = { bg: '#ffffff', fg: '#1a2233', border: '#e4e9f0', accent: '#1677ff', dest: '#f04438' }
+const DARK = { bg: '#0F172A', fg: '#F8FAFC', border: '#333a4a', accent: '#22C55E', dest: '#EF4444' }
 
 type Theme = { surface: string; fg: string; border: string; accent: string; dest: string }
 function readTheme(): Theme {
   const root = getComputedStyle(document.documentElement)
   const body = getComputedStyle(document.body)
-  const v = (n: string, fb: string) => root.getPropertyValue(n).trim() || fb
+  const isDark = document.body.hasAttribute('data-ds-dark-theme') || document.documentElement.hasAttribute('data-ds-dark-theme')
+  const base = isDark ? DARK : LIGHT
+  const vb = (n: string, fb: string) => root.getPropertyValue(n).trim() || fb
+  const bgc = body.backgroundColor && body.backgroundColor !== 'rgba(0, 0, 0, 0)' ? body.backgroundColor : ''
+  const fgc = body.color && body.color !== 'rgba(0, 0, 0, 0)' ? body.color : ''
   return {
-    surface: v('--dsw-alias-bg-base', body.backgroundColor || P.bg),
-    fg: body.color || P.fg,
-    border: v('--dsw-alias-border-l3', P.border),
-    accent: P.accent,
-    dest: P.dest,
+    surface: vb('--dsw-alias-bg-base', bgc || base.bg),
+    fg: fgc || base.fg,
+    border: vb('--dsw-alias-border-l3', base.border),
+    accent: base.accent,
+    dest: base.dest,
   }
 }
 function useTheme(): Theme {
@@ -270,7 +275,7 @@ function RulesPanel({ theme }: { theme: Theme }) {
   const [wsList, setWsList] = useState<{ path: string; title: string }[]>([])
   const [ws, setWs] = useState('')
   const [checked, setChecked] = useState<Set<string>>(new Set())
-  const [msg, setMsg] = useState('')
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -279,65 +284,71 @@ function RulesPanel({ theme }: { theme: Theme }) {
         const [lr, lw] = await Promise.all([fetch('/rules/library').then((r) => r.json()), fetch('/rules/workspaces').then((r) => r.json())])
         setRules(lr.rules || []); setSels(lr.selections || {})
         setWsList((lw as any).workspaces || [])
-      } catch (e: any) { setMsg(String((e && e.message) || e)) }
+      } catch (e: any) { setMsg({ text: String((e && e.message) || e), ok: false }) }
     })()
   }, [])
 
-  const chooseWs = (w: string) => { setWs(w); setChecked(new Set(sels[w] || [])); setMsg('') }
+  const chooseWs = (w: string) => { setWs(w); setChecked(new Set(sels[w] || [])); setMsg(null) }
   const toggle = (id: string) => { setChecked((c) => { const n = new Set(c); n.has(id) ? n.delete(id) : n.add(id); return n }) }
   const save = async () => {
-    if (!ws) { setMsg('请填写工作区根目录'); return }
+    if (!ws) { setMsg({ text: '请选择工作区', ok: false }); return }
     setBusy(true)
     try {
       const r = await fetch('/rules/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws, rules: Array.from(checked) }) })
       const j = await r.json()
-      setMsg(j.ok ? `已保存${ws}/CLAUDE.local.md${j.wroteLocal ? '' : '(未能写入本地,请检查权限)'}` : (j.error || '保存失败'))
+      setMsg(j.ok ? { text: `已保存 ${ws}/CLAUDE.local.md`, ok: true } : { text: j.error || '保存失败', ok: false })
       setSels((s) => ({ ...s, [ws]: Array.from(checked) }))
-    } catch (e: any) { setMsg(String((e && e.message) || e)) }
+    } catch (e: any) { setMsg({ text: String((e && e.message) || e), ok: false }) }
     setBusy(false)
   }
 
   const cats = Array.from(new Set(rules.map((r) => r.category)))
+  const hover = 'rgba(128,128,128,.08)'
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       {/* 左:工作区列表 */}
-      <div style={{ width: 280, flexShrink: 0, borderRight: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 12px', borderBottom: `1px solid ${theme.border}`, flexShrink: 0 }}>
-          <span style={{ fontSize: 12, color: theme.fg, opacity: .65 }}>工作区</span>
-        </div>
-        <div style={{ flex: 1, overflow: 'auto', padding: '0 8px 10px' }}>
-          {wsList.length === 0 && <div style={{ color: theme.fg, opacity: .4, fontSize: 12.5, padding: 10 }}>暂无工作区</div>}
+      <div style={{ width: 250, flexShrink: 0, borderRight: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'transparent' }}>
+        <div style={{ padding: '12px 14px 6px', fontSize: 12, fontWeight: 600, color: theme.fg, flexShrink: 0 }}>工作区</div>
+        <div style={{ flex: 1, overflow: 'auto', padding: '4px 8px 12px' }}>
+          {wsList.length === 0 && <div style={{ color: theme.fg, opacity: .45, fontSize: 12.5, padding: 12 }}>暂无工作区</div>}
           {wsList.map((w) => (
-            <div key={w.path} onClick={() => chooseWs(w.path)} title={w.path} style={{ display: 'flex', gap: 7, alignItems: 'center', padding: '6px 8px', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: ws === w.path ? 'rgba(128,128,128,.16)' : 'transparent', color: theme.fg, wordBreak: 'break-all' }} onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(128,128,128,.14)')} onMouseLeave={(e) => (e.currentTarget.style.background = ws === w.path ? 'rgba(128,128,128,.16)' : 'transparent')}>
-              {w.title}
-              <span style={{ opacity: .5, fontSize: 10.5 }}>{w.path}</span>
+            <div key={w.path} onClick={() => chooseWs(w.path)} title={w.path} style={{ padding: '8px 10px', borderRadius: 9, fontSize: 12, cursor: 'pointer', marginBottom: 2, background: ws === w.path ? 'rgba(128,128,128,.14)' : 'transparent', color: theme.fg, transition: 'background .15s' }} onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(128,128,128,.1)')} onMouseLeave={(e) => (e.currentTarget.style.background = ws === w.path ? 'rgba(128,128,128,.14)' : 'transparent')}>
+              <div style={{ fontWeight: 500 }}>{w.title}</div>
+              <div style={{ opacity: .5, fontSize: 10.5, marginTop: 1, wordBreak: 'break-all' }}>{w.path}</div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* 右:规则分类勾选 */}
+      {/* 右:规则分类勾选(卡片化) */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: `1px solid ${theme.border}`, flexShrink: 0, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: theme.fg, opacity: .7 }}>勾选本工作区要使用的规则({checked.size}/{rules.length})</span>
-          <button onClick={save} disabled={busy} style={{ background: theme.accent, color: '#fff', border: 'none', borderRadius: 7, padding: '5px 14px', fontSize: 12, cursor: 'pointer', marginLeft: 'auto', opacity: busy ? .6 : 1 }}>{busy ? '保存中…' : '保存并生成本地规则'}</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: `1px solid ${theme.border}`, flexShrink: 0 }}>
+          <span style={{ fontSize: 12, color: theme.fg, opacity: .75 }}>勾选本工作区要使用的规则({checked.size}/{rules.length})</span>
+          <button onClick={save} disabled={busy} style={{ background: theme.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '6px 16px', fontSize: 12.5, cursor: 'pointer', marginLeft: 'auto', fontWeight: 500, opacity: busy ? .6 : 1, transition: 'opacity .15s' }}>{busy ? '保存中…' : '保存并生成本地规则'}</button>
         </div>
-        {msg && <div style={{ padding: '6px 14px', fontSize: 12, color: theme.dest }}>{msg}</div>}
-        <div style={{ flex: 1, overflow: 'auto', padding: '10px 14px' }}>
+        {msg && <div style={{ padding: '8px 16px', fontSize: 12.5, color: msg.ok ? theme.accent : theme.dest, background: msg.ok ? 'rgba(34,197,94,.1)' : 'rgba(239,68,68,.08)', borderBottom: `1px solid ${theme.border}` }}>{msg.text}</div>}
+        <div style={{ flex: 1, overflow: 'auto', padding: '14px 16px' }}>
           {cats.map((cat) => (
-            <div key={cat} style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 600, color: theme.fg, marginBottom: 6 }}>{cat}</div>
-              {rules.filter((r) => r.category === cat).map((r) => (
-                <label key={r.id} onClick={() => toggle(r.id)} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '7px 8px', borderRadius: 8, cursor: 'pointer', background: checked.has(r.id) ? 'rgba(128,128,128,.12)' : 'transparent', transition: 'background .15s' }}>
-                  <input type="checkbox" checked={checked.has(r.id)} readOnly style={{ marginTop: 2, accentColor: theme.accent }} />
-                  <span style={{ flex: 1 }}>
-                    <span style={{ fontSize: 12.5, color: theme.fg, fontWeight: 500 }}>{r.name}</span>
-                    {r.applies && <span style={{ display: 'inline-block', marginLeft: 8, fontSize: 10.5, color: theme.accent, opacity: .85, border: `1px solid ${theme.border}`, borderRadius: 5, padding: '1px 6px', verticalAlign: 'middle' }}>适用:{r.applies}</span>}
-                    <span style={{ display: 'block', fontSize: 11.5, color: theme.fg, opacity: .6, marginTop: 2 }}>{r.description}</span>
-                  </span>
-                </label>
-              ))}
+            <div key={cat} style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: theme.fg, opacity: .8, marginBottom: 8, letterSpacing: '.3px' }}>{cat}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {rules.filter((r) => r.category === cat).map((r) => {
+                  const on = checked.has(r.id)
+                  return (
+                    <label key={r.id} onClick={() => toggle(r.id)} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '11px 13px', borderRadius: 11, border: `1px solid ${on ? theme.accent : theme.border}`, background: on ? 'rgba(128,128,128,.08)' : 'transparent', cursor: 'pointer', transition: 'all .15s' }} onMouseEnter={(e) => { if (!on) e.currentTarget.style.background = hover }} onMouseLeave={(e) => { if (!on) e.currentTarget.style.background = 'transparent' }}>
+                      <input type="checkbox" checked={on} readOnly style={{ marginTop: 2, accentColor: theme.accent, width: 15, height: 15 }} />
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 13, color: theme.fg, fontWeight: 500 }}>{r.name}</span>
+                          {r.applies && <span style={{ fontSize: 10.5, color: theme.accent, border: `1px solid ${theme.accent}`, borderRadius: 5, padding: '1px 7px', lineHeight: 1.5 }}>适用:{r.applies}</span>}
+                        </span>
+                        <span style={{ display: 'block', fontSize: 11.5, color: theme.fg, opacity: .6, marginTop: 3 }}>{r.description}</span>
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
             </div>
           ))}
         </div>
