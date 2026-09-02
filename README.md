@@ -1,41 +1,36 @@
 # dsh-agents-panel
 
-本机**自有**的 DSH 本地插件:在 DSH Web UI 显示 `~/.agents` 公共资产库(技能/规则/MCP),像文件夹一样浏览。
+DSH(DeepSeek Harness)社区插件:在 DSH Web UI 里以「公共仓库」弹窗浏览/管理 `~/.agents` 公共资产库(技能 / 全局规则 / MCP 定义),像文件夹一样操作。
 
-## 独立性设计(实测修正)
+- 入口:DSH 左侧边栏底部「公共仓库」按钮 → 弹出**居中弹窗**(跟随主题/亮暗)。
+- 布局:**左侧文件树 + 右侧多文件 tabs 预览**。
+- `.md` 文件(SKILL.md / AGENTS.md)渲染为**格式化 Markdown** 预览,可切换「预览 / 源码」;其它文件为可编辑源码。
+- 数据源 `~/.agents` 在主目录,聚合了跨工具的技能、规则、MCP。
 
-- 源码/产物在 `~/agents-hub/dsh-agents-panel/`,自有目录,可进 git,不是市场下载插件。
-- **DSH 加载 UI 插件必须走 profile 的 bundle 列表**(`resolveBundleDir` 只解析 `dsh.profile.bundles` 里的包;纯 `cordis.patch.yml` 用户层插入不加载新包——已实测)。
-- 因此:把它加进 `dsh.profile.bundles`(**与框架 bundle `dsh-base`/`dsh-web-app` 并列**,是自有本地包;市场对其它包的装/卸/更不影响它),并软链进依赖目录。
-- 数据源 `~/.agents` 在主目录,本就独立。
+## 安装(已发布到 GitHub)
 
-## 结构
-
+```bash
+dsh plugin --profile web add github:Wkk12/dsh-agents-panel
 ```
-dsh-agents-panel/
-├── package.json        # dsh.bundle.patch + dsh.client(platform: web)
-├── cordis.patch.yml    # - insert(插件自注册)
-├── src/index.ts        # Host: ctx.fs + ctx.webServer.register('/agents')
-├── src/client/index.ts # Browser: 注册 sidebar.footer.action + shell.overlay
-├── build.mjs           # esbuild 构建 lib/
-└── lib/                # 构建产物 index.js + client.js
-```
+
+> 由于 DSH 加载 UI 插件必须通过 profile 的 bundle 列表(`dsh plugin add` 会自动登记),本插件以正规市场方式安装、每次启动保留。源码在本仓库,可自行 fork/改。
 
 ## 数据接口(Host)
 
 | 路由 | 作用 |
 | --- | --- |
 | `/agents/list?dir=` | 列出 `~/.agents` 下文件/目录 |
-| `/agents/read?path=` | 读文件内容 |
-| `/agents/write` | 写文件 |
-| `/agents/delete?path=` | 删文件 |
+| `/agents/read?path=` | 读文本文件 |
+| `/agents/write?path=&content=` | 写/新建文本 |
+| `/agents/delete?path=` | 删除文件 |
 
-## 安装路径(实测有效)
+> Host 用 node fs + `os.homedir()` 直接读主目录 `~/.agents`(DSH 的 `ctx.fs` 绑定在沙盒根,读不了主目录)。
 
-1. 构建:`node build.mjs`(产出 `lib/index.js` + `lib/client.js`)。
-2. 软链:`ln -sfn ~/agents-hub/dsh-agents-panel ~/.dsh/profiles/node_modules/dsh-agents-panel`。
-3. 在 `~/.dsh/profiles/web/package.json` 的 `dsh.profile.bundles` 追加 `"dsh-agents-panel"`。
-4. **重启 Desktop**。
-5. 验证:浏览器 DevTools→Network 看 `/plugins/dsh-agents-panel/client.js` 是否 200;左侧边栏底部应出现「公共仓库」。
+## 开发
 
-> 插件自身的 `cordis.patch.yml`(`dsh.bundle.patch`)负责自注册,无需写进 profile 的用户层 patch。
+```bash
+node build.mjs        # 产出 lib/index.js + lib/client.js 并交给 DSH
+```
+
+- `package.json`:`dsh.bundle.patch` + `dsh.client(platform: web)` 自注册。
+- 构建:esbuild;浏览器包以 CJS 闭包工厂 `window.__ModuleLoader__.load(...)` 输出,react/react-dom/cordis/ui 等 seed 标 external。
