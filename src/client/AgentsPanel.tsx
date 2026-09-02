@@ -192,12 +192,9 @@ function RepoTree({ theme }: { theme: Theme }) {
     await fetch(`/agents/delete?path=${encodeURIComponent(t.path)}`)
     closeTab(i); void load(dir)
   }
-  const makeFile = async () => {
-    const name = window.prompt('新文件名（如 tools/hello.md，相对当前目录）')
-    if (!name) return
-    const full = `${dir.replace(/\/$/, '')}/${name.replace(/^\//, '')}`
-    await fetch(`/agents/write?path=${encodeURIComponent(full)}&content=`)
-    void load(dir)
+  const openDir = async () => {
+    const p = dir || '~/.agents'
+    await fetch(`/agents/open?path=${encodeURIComponent(p)}`)
   }
   const up = () => { const p = dir.replace(/\/$/, ''); void load(p.slice(0, p.lastIndexOf('/')) || '') }
 
@@ -212,7 +209,7 @@ function RepoTree({ theme }: { theme: Theme }) {
       <div style={{ width: 280, flexShrink: 0, borderRight: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '9px 12px', flexShrink: 0 }}>
           <button onClick={up} style={{ background: 'transparent', color: theme.fg, border: `1px solid ${theme.border}`, borderRadius: 7, padding: '4px 10px', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, transition: 'background .15s' }} onMouseEnter={(e) => (e.currentTarget.style.background = hover)} onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}><Icon d={IC.up} size={13} /> 上级</button>
-          <button onClick={makeFile} style={{ background: 'transparent', color: theme.fg, border: `1px solid ${theme.border}`, borderRadius: 7, padding: '4px 10px', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, transition: 'background .15s' }} onMouseEnter={(e) => (e.currentTarget.style.background = hover)} onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}><Icon d={IC.plus} size={13} /> 新建</button>
+          <button onClick={openDir} title="在系统资源管理器打开当前目录" style={{ background: 'transparent', color: theme.fg, border: `1px solid ${theme.border}`, borderRadius: 7, padding: '4px 10px', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, transition: 'background .15s' }} onMouseEnter={(e) => (e.currentTarget.style.background = hover)} onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}><Icon d="M20 4a2 2 0 0 0-2-2h-8l-2-2H4a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z" size={13} /> 打开资源管理器</button>
         </div>
         <div style={{ padding: '0 8px 6px', fontSize: 11, color: theme.fg, opacity: .55, wordBreak: 'break-all' }}>{dir || '~/.agents'}</div>
         <div style={{ flex: 1, overflow: 'auto', padding: '0 8px 10px' }}>

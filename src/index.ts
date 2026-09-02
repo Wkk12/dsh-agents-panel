@@ -3,6 +3,7 @@
 // - /rules/*    : 规则库分类 + 按工作区根目录勾选 + 生成 CLAUDE.local.md
 // 用 node fs + os.homedir() 直接读写主目录与工作区(宿主进程以用户权限运行)。
 import { promises as fs } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join, dirname, basename } from 'node:path'
 
@@ -102,6 +103,12 @@ export function apply(ctx: any) {
           if (name === '/delete') {
             const p = q.get('path'); if (!p) return send(res, { ok: false, error: 'no path' })
             await fs.unlink(p); return send(res, { ok: true })
+          }
+          if (name === '/open') {
+            // 在系统资源管理器打开目录/文件(macOS 用 `open`)
+            const p = q.get('path')
+            if (!p) return send(res, { ok: false, error: 'no path' })
+            try { spawn('open', [p], { detached: true, stdio: 'ignore' }).unref(); return send(res, { ok: true }) } catch (e: any) { return send(res, { ok: false, error: String((e && e.message) || e) }, 500) }
           }
           return send(res, { ok: false, error: 'not found' }, 404)
         } catch (e: any) {
