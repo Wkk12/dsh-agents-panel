@@ -275,6 +275,7 @@ function RulesPanel({ theme }: { theme: Theme }) {
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [booting, setBooting] = useState(false)
 
   useEffect(() => {
     ;(async () => {
@@ -300,6 +301,16 @@ function RulesPanel({ theme }: { theme: Theme }) {
     setBusy(false)
   }
 
+  const bootstrapAll = async () => {
+    setBooting(true)
+    try {
+      const r = await fetch('/rules/bootstrap')
+      const j = await r.json()
+      setMsg(j.ok ? (j.bootstrapped ? { text: `已为 ${j.bootstrapped} 个缺失规则的工作区生成默认规则`, ok: true } : { text: `全部工作区都已有规则文件，未改动`, ok: true }) : { text: j.error || '引导失败', ok: false })
+    } catch (e: any) { setMsg({ text: String((e && e.message) || e), ok: false }) }
+    setBooting(false)
+  }
+
   const cats = Array.from(new Set(rules.map((r) => r.category)))
   const hover = 'rgba(128,128,128,.08)'
 
@@ -323,7 +334,8 @@ function RulesPanel({ theme }: { theme: Theme }) {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: `1px solid ${theme.border}`, flexShrink: 0 }}>
           <span style={{ fontSize: 12, color: theme.fg, opacity: .75 }}>勾选本工作区要使用的规则({checked.size}/{rules.length})</span>
-          <button onClick={save} disabled={busy} style={{ background: theme.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '6px 16px', fontSize: 12.5, cursor: 'pointer', marginLeft: 'auto', fontWeight: 500, opacity: busy ? .6 : 1, transition: 'opacity .15s' }}>{busy ? '保存中…' : '保存并生成本地规则'}</button>
+          <button onClick={bootstrapAll} disabled={booting} title="为所有还没规则文件的工作区自动生成默认规则" style={{ background: 'transparent', color: theme.fg, border: `1px solid ${theme.border}`, borderRadius: 8, padding: '5px 12px', fontSize: 12, cursor: 'pointer', opacity: booting ? .6 : .85, transition: 'opacity .15s' }}>{booting ? '引导中…' : '引导未生成'}</button>
+          <button onClick={save} disabled={busy} style={{ background: theme.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '6px 16px', fontSize: 12.5, cursor: 'pointer', fontWeight: 500, opacity: busy ? .6 : 1, transition: 'opacity .15s' }}>{busy ? '保存中…' : '保存并生成本地规则'}</button>
         </div>
         {msg && <div style={{ padding: '8px 16px', fontSize: 12.5, color: msg.ok ? theme.accent : theme.dest, background: msg.ok ? 'rgba(34,197,94,.1)' : 'rgba(239,68,68,.08)', borderBottom: `1px solid ${theme.border}` }}>{msg.text}</div>}
         <div style={{ flex: 1, overflow: 'auto', padding: '14px 16px' }}>

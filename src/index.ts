@@ -67,6 +67,33 @@ async function readDshWorkspaces(): Promise<{ path: string; title: string }[]> {
   return Object.values(t).map((w: any) => ({ path: w.path, title: w.title || basename(w.path) }))
 }
 
+// 生成本地规则文件:工作区根目录 AGENTS.md(跨工具标准)+ CLAUDE.md(@AGENTS.md 导入)
+async function generateProjectRules(ws: string, ids: string[]): Promise<void> {
+  const library = await readRulesLibrary()
+  const chosen = library.filter((r) => (ids || []).includes(r.id))
+  const agPath = join(ws, 'AGENTS.md')
+  const content = `# 项目规则(由公共仓库「规则」页生成,含通用+勾选规则)\n\n> 工作区根目录: ${ws}\n> 如需调整: DSH「公共仓库→规则」勾选保存,或 \`rule check/uncheck\`。\n\n---\n\n` + chosen.map((r) => `## ${r.name}\n\n${r.file}`).join('\n\n---\n\n') + '\n'
+  await fs.writeFile(agPath, content, 'utf-8')
+  // 让 Claude Code 也读项目规则:CLAUDE.md 为实体文件,首行 @AGENTS.md 导入(Claude 记忆追加在此,不影响 AGENTS.md)
+  const cl = join(ws, 'CLAUDE.md')
+  try { const st = await fs.lstat(cl); if (st.isSymbolicLink()) await fs.unlink(cl) } catch { /* ignore */ }
+  try {
+    const existing = await fs.readFile(cl, 'utf-8').catch(() => '')
+    if (!existing.trimStart().startsWith('@AGENTS.md')) await fs.writeFile(cl, '@AGENTS.md\n\n' + existing, 'utf-8')
+  } catch { /* ignore */ }
+}
+
+// 为"还没有任何规则文件"的工作区套用默认模板(已有 AGENTS.md/CLAUDE.md 就不动,不覆盖手写的)
+async function bootstrapWorkspace(ws: string): Promise<{ ok: boolean; skipped: boolean; path: string; count: number }> {
+  const hasAg = await fs.access(join(ws, 'AGENTS.md')).then(() => true).catch(() => false)
+  const hasCl = await fs.access(join(ws, 'CLAUDE.md')).then(() => true).catch(() => false)
+  if (hasAg || hasCl) return { ok: true, skipped: true, path: ws, count: 0 }
+  const sels = await readSelections()
+  const ids = sels[ws] && sels[ws].length ? sels[ws] : DEFAULT_RULE_IDS.slice()
+  await generateProjectRules(ws, ids)
+  return { ok: true, skipped: false, path: ws, count: ids.length }
+}
+
 export function apply(ctx: any) {
   ctx.effect(
     () => ctx.webServer.register({
@@ -158,20 +185,27 @@ export function apply(ctx: any) {
             sels[ws] = Array.isArray(rules) ? rules : []
             await fs.writeFile(WORKSPACES_FILE, JSON.stringify({ workspaces: sels }, null, 2), 'utf-8')
             // 生成工作区根目录的 AGENTS.md(跨工具标准:DSH/Codex/Cursor 都读)
-            const library = await readRulesLibrary()
-            const chosen = library.filter((r) => (sels[ws] || []).includes(r.id))
-            const agPath = join(ws, 'AGENTS.md')
-            const content = `# 项目规则(由公共仓库「规则」页生成,含通用+勾选规则)\n\n> 工作区根目录: ${ws}\n> 如需调整,在 DSH「公共仓库 → 规则」勾选后保存。\n\n---\n\n` + chosen.map((r) => `## ${r.name}\n\n${r.file}`).join('\n\n---\n\n') + '\n'
-            let wroteLocal = true
-            try { await fs.writeFile(agPath, content, 'utf-8') } catch { wroteLocal = false }
-            // 让 Claude Code 也读项目规则:CLAUDE.md 为实体文件,首行 @AGENTS.md 导入(Claude 记忆追加在此,不影响 AGENTS.md)
-            const cl = join(ws, 'CLAUDE.md')
-            try { const st = await fs.lstat(cl); if (st.isSymbolicLink()) await fs.unlink(cl) } catch { /* ignore */ }
-            try {
-              const existing = await fs.readFile(cl, 'utf-8').catch(() => '')
-              if (!existing.trimStart().startsWith('@AGENTS.md')) await fs.writeFile(cl, '@AGENTS.md\n\n' + existing, 'utf-8')
-            } catch { /* ignore */ }
+            let wroteLocal = true, agPath = join(ws, 'AGENTS.md')
+            try { await generateProjectRules(ws, sels[ws] || []) } catch { wroteLocal = false }
             return send(res, { ok: true, wroteLocal, localPath: agPath })
+          }
+          if (name === '/bootstrap') {
+            // 自动为新工作区补默认规则:?ws=<path> 单个;/rules/bootstrap 不带 ws = 补齐所有缺少规则文件的已登记工作区
+            const ws = q.get('ws')
+            if (ws) {
+              const r = await bootstrapWorkspace(ws)
+              return send(res, { ok: true, ...r })
+            }
+            const dsh = await readDshWorkspaces()
+            const sels = await readSelections()
+            const seen = new Set<string>()
+            const all: string[] = []
+            for (const w of dsh) { seen.add(w.path); all.push(w.path) }
+            for (const p of Object.keys(sels)) if (!seen.has(p)) { seen.add(p); all.push(p) }
+            const done: { path: string; skipped: boolean }[] = []
+            for (const p of all) { done.push(await bootstrapWorkspace(p).catch((e) => ({ path: p, skipped: false }))) }
+            const built = done.filter((d) => !d.skipped)
+            return send(res, { ok: true, total: all.length, bootstrapped: built.length, skipped: done.length - built.length, items: done })
           }
           return send(res, { ok: false, error: 'not found' }, 404)
         } catch (e: any) {
@@ -180,5 +214,31 @@ export function apply(ctx: any) {
       },
     }),
     'dsh-agents-panel: rules routes',
+  )
+
+  // 自动引导:新工作区(DSH 里新建/打开一个还没规则文件的目录)自动补默认规则,
+  // 让"新建项目第一步就自动拿到公共规则"成立。已存在的旧工作区不进初始 seen,不会被自动改动。
+  ctx.effect(
+    () => {
+      const seen = new Set<string>()
+      const scan = async () => {
+        const dsh = await readDshWorkspaces().catch(() => [])
+        const sels = await readSelections()
+        const all = [...dsh.map((w) => w.path), ...Object.keys(sels)]
+        for (const p of all) {
+          if (seen.has(p)) continue
+          seen.add(p)
+          try { await bootstrapWorkspace(p) } catch { /* 目录不存在/无权限,跳过 */ }
+        }
+      }
+      // 初始:标记当前所有登记工作区,避免误动旧工作区;仅对之后新增的做引导
+      void readDshWorkspaces().then((dsh) => { for (const w of dsh) seen.add(w.path) }).catch(() => {})
+      // DSH 工作区域有变化(新建/打开新工作区)时,补引导缺失的规则文件
+      const off = typeof ctx.on === 'function'
+        ? ctx.on('domain/changed', (change: any) => { if (change && change.domain === 'workspace') void scan() })
+        : null
+      return () => { if (typeof off === 'function') off() }
+    },
+    'dsh-agents-panel: auto-bootstrap',
   )
 }
